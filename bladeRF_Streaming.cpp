@@ -29,7 +29,8 @@
 #include <cstring> //memset
 
 #define DEF_NUM_BUFFS 32
-#define DEF_BUFF_LEN 4096
+#define DEF_BUFF_LEN 16384 //samples per channel, scaled by channel count
+#define BUFF_LEN_ALIGN 2048 //8192 byte GPIF buffer / 4 bytes per SC16 sample
 
 std::vector<std::string> bladeRF_SoapySDR::getStreamFormats(const int, const size_t) const
 {
@@ -59,8 +60,9 @@ SoapySDR::ArgInfoList bladeRF_SoapySDR::getStreamArgsInfo(const int, const size_
     lengthArg.key = "buflen";
     lengthArg.value = std::to_string(DEF_BUFF_LEN);
     lengthArg.name = "Buffer Length";
-    lengthArg.description = "Number of bytes per USB buffer, the number must be a multiple of 1024.";
-    lengthArg.units = "bytes";
+    lengthArg.description = "Number of samples per USB buffer, rounded up to a multiple of " + std::to_string(BUFF_LEN_ALIGN) + ".\n"
+        "The default is " + std::to_string(DEF_BUFF_LEN) + " samples per channel, multiplied by the number of streamed channels.";
+    lengthArg.units = "samples";
     lengthArg.type = SoapySDR::ArgInfo::INT;
     streamArgs.push_back(lengthArg);
 
@@ -69,7 +71,7 @@ SoapySDR::ArgInfoList bladeRF_SoapySDR::getStreamArgsInfo(const int, const size_
     xfersArg.value = "0";
     xfersArg.name = "Num Transfers";
     xfersArg.description = "Number of async USB transfers. Use 0 for automatic";
-    xfersArg.units = "bytes";
+    xfersArg.units = "transfers";
     xfersArg.type = SoapySDR::ArgInfo::INT;
     xfersArg.range = SoapySDR::Range(0, 32);
     streamArgs.push_back(xfersArg);
@@ -132,8 +134,8 @@ SoapySDR::Stream *bladeRF_SoapySDR::setupStream(
 
     //determine the size of each buffer in samples
     int bufSize = (args.count("buflen") == 0)? 0 : atoi(args.at("buflen").c_str());
-    if (bufSize == 0) bufSize = DEF_BUFF_LEN;
-    if ((bufSize % 1024) != 0) bufSize = ((bufSize/1024) + 1) * 1024;
+    if (bufSize <= 0) bufSize = DEF_BUFF_LEN*int(channels.size());
+    if ((bufSize % BUFF_LEN_ALIGN) != 0) bufSize = ((bufSize/BUFF_LEN_ALIGN) + 1) * BUFF_LEN_ALIGN;
 
     //determine the number of active transfers
     int numXfers = (args.count("transfers") == 0)? 0 : atoi(args.at("transfers").c_str());
